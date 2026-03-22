@@ -26,7 +26,7 @@ make
 
 ```bash
 cd pin_kit
-./pin -t source/tools/MyPinTool/obj-intel64/MyPinTool.so -o trace.txt -- ./test
+./pin -t source/tools/MyPinTool/obj-intel64/MyPinTool.so -o trace.txt -- ./test/gemm
 ```
 
 ## 📂 Output Format
