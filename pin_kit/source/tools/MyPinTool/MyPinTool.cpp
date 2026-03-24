@@ -122,37 +122,31 @@ VOID Trace(TRACE trace, VOID *v)
  */
 VOID Instruction(INS ins, VOID *v)
 {
-    // Memory READ
-    if (INS_IsMemoryRead(ins))
-    {
-        INS_InsertPredicatedCall(
-            ins, IPOINT_BEFORE, (AFUNPTR)RecordMemAccess,
-            IARG_INST_PTR,
-            IARG_UINT32, 'R',
-            IARG_MEMORYREAD_EA,
-            IARG_END);
-    }
+    UINT32 memOperands = INS_MemoryOperandCount(ins);
 
-    // Second memory READ (some instructions have two reads)
-    if (INS_HasMemoryRead2(ins))
+    for (UINT32 memOp = 0; memOp < memOperands; memOp++)
     {
-        INS_InsertPredicatedCall(
-            ins, IPOINT_BEFORE, (AFUNPTR)RecordMemAccess,
-            IARG_INST_PTR,
-            IARG_UINT32, 'R',
-            IARG_MEMORYREAD2_EA,
-            IARG_END);
-    }
+        // Memory READ
+        if (INS_MemoryOperandIsRead(ins, memOp))
+        {
+            INS_InsertPredicatedCall(
+                ins, IPOINT_BEFORE, (AFUNPTR)RecordMemAccess,
+                IARG_INST_PTR,
+                IARG_UINT32, 'R',
+                IARG_MEMORYOP_EA, memOp,
+                IARG_END);
+        }
 
-    // Memory WRITE
-    if (INS_IsMemoryWrite(ins))
-    {
-        INS_InsertPredicatedCall(
-            ins, IPOINT_BEFORE, (AFUNPTR)RecordMemAccess,
-            IARG_INST_PTR,
-            IARG_UINT32, 'W',
-            IARG_MEMORYWRITE_EA,
-            IARG_END);
+        // Memory WRITE
+        if (INS_MemoryOperandIsWritten(ins, memOp))
+        {
+            INS_InsertPredicatedCall(
+                ins, IPOINT_BEFORE, (AFUNPTR)RecordMemAccess,
+                IARG_INST_PTR,
+                IARG_UINT32, 'W',
+                IARG_MEMORYOP_EA, memOp,
+                IARG_END);
+        }
     }
 }
 
