@@ -19,6 +19,7 @@
 UINT64 insCount = 0;    // number of dynamically executed instructions
 UINT64 bblCount = 0;    // number of dynamically executed basic blocks
 UINT64 threadCount = 0; // total number of threads, including main thread
+UINT64 funcCount = 0;   // number of dynamically executed function calls (function invocations)
 
 static UINT64 memAccessCount = 0;      // number of memory accesses recorded
 static UINT64 MAX_MEM_ACCESS = 100000; // limit (you can change)
@@ -54,6 +55,16 @@ INT32 Usage()
 /* ===================================================================== */
 // Analysis routines
 /* ===================================================================== */
+
+/*!
+ * Count function invocations.
+ * This function is called every time a function (routine) is entered.
+ * It increments the global function call counter.
+ */
+VOID CountFunc()
+{
+    funcCount++;
+}
 
 /*!
  * Increase counter of the executed basic blocks and instructions.
@@ -151,6 +162,27 @@ VOID Instruction(INS ins, VOID *v)
 }
 
 /*!
+ * Instrument routines (functions) to count function calls.
+ * This function is invoked for every routine in the application.
+ * It inserts a call to CountFunc() before the routine executes,
+ * thereby counting each function invocation.
+ * @param[in]   rtn     routine (function) to be instrumented
+ * @param[in]   v       value specified by the tool in the
+ *                      RTN_AddInstrumentFunction function call
+ */
+VOID Routine(RTN rtn, VOID *v)
+{
+    RTN_Open(rtn);
+
+    RTN_InsertCall(
+        rtn, IPOINT_BEFORE,
+        (AFUNPTR)CountFunc,
+        IARG_END);
+
+    RTN_Close(rtn);
+}
+
+/*!
  * Increase counter of threads in the application.
  * This function is called for every thread created by the application when it is
  * about to start running (including the root thread).
@@ -176,6 +208,7 @@ VOID Fini(INT32 code, VOID *v)
     *out << "Number of instructions: " << insCount << std::endl;
     *out << "Number of basic blocks: " << bblCount << std::endl;
     *out << "Number of threads: " << threadCount << std::endl;
+    *out << "Number of functions: " << funcCount << std::endl;
     *out << "===============================================" << std::endl;
 }
 
@@ -204,6 +237,9 @@ int main(int argc, char *argv[])
 
     // Register instruction-level instrumentation (memory tracing)
     INS_AddInstrumentFunction(Instruction, 0);
+
+    // Register function to be called for every routine
+    RTN_AddInstrumentFunction(Routine, 0);
 
     if (KnobCount)
     {
