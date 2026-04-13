@@ -11,18 +11,28 @@
 #include "pin.H"
 #include <iostream>
 #include <fstream>
+#include <map>
+#include <vector>
+#include <algorithm>
 
 /* ================================================================== */
 // Global variables
 /* ================================================================== */
+
+std::map<VOID *, int> dist;
+std::map<VOID *, int> reuse;
+int line = 0;
 
 UINT64 insCount = 0;    // number of dynamically executed instructions
 UINT64 bblCount = 0;    // number of dynamically executed basic blocks
 UINT64 threadCount = 0; // total number of threads, including main thread
 UINT64 funcCount = 0;   // number of dynamically executed function calls (function invocations)
 
-static UINT64 memAccessCount = 0;      // number of memory accesses recorded
-static UINT64 MAX_MEM_ACCESS = 100000; // limit (you can change)
+static UINT64 memAccessCount = 0;     // number of memory accesses recorded
+static UINT64 MAX_MEM_ACCESS = 10000; // limit (you can change)
+
+UINT64 totalDistance = 0;
+UINT64 distanceCount = 0;
 
 std::ostream *out = &std::cerr;
 
@@ -89,13 +99,37 @@ VOID CountBbl(UINT32 numInstInBbl)
  */
 VOID RecordMemAccess(VOID *ip, CHAR type, VOID *addr)
 {
-    // Stop execution if limit reached
     if (memAccessCount >= MAX_MEM_ACCESS)
     {
         PIN_ExitApplication(0);
     }
 
-    *out << std::hex << ip << ", " << type << ", " << addr << std::endl;
+    int distance = -1;
+
+    if (dist.find(addr) != dist.end())
+    {
+        distance = line - dist[addr];
+
+        totalDistance += distance;
+        distanceCount++;
+    }
+
+    if (reuse.find(addr) == reuse.end())
+        reuse[addr] = 0;
+    else
+        reuse[addr]++;
+
+    std::string rw = (type == 'R') ? "Read" : "Write";
+
+    *out << std::hex << ip << ", "
+         << rw << ", "
+         << std::hex << addr << ", "
+         << std::dec << distance << ", "
+         << reuse[addr] << std::endl;
+
+    dist[addr] = line;
+
+    line++;
 
     memAccessCount++;
 }
@@ -204,11 +238,29 @@ VOID ThreadStart(THREADID threadIndex, CONTEXT *ctxt, INT32 flags, VOID *v) { th
 VOID Fini(INT32 code, VOID *v)
 {
     *out << "===============================================" << std::endl;
-    *out << "MyPinTool analysis results: " << std::endl;
-    *out << "Number of instructions: " << insCount << std::endl;
-    *out << "Number of basic blocks: " << bblCount << std::endl;
-    *out << "Number of threads: " << threadCount << std::endl;
-    *out << "Number of functions: " << funcCount << std::endl;
+
+    double avg = 0.0;
+    if (distanceCount != 0)
+        avg = (double)totalDistance / distanceCount;
+
+    std::cout << "Average Distance: " << avg << std::endl;
+
+    std::vector<std::pair<VOID *, int>> vec(reuse.begin(), reuse.end());
+
+    std::sort(vec.begin(), vec.end(),
+              [](auto &a, auto &b)
+              {
+                  return a.second > b.second;
+              });
+
+    std::cout << "Top 5 Reuse Addresses:" << std::endl;
+
+    for (int i = 0; i < 5 && i < (int)vec.size(); i++)
+    {
+        std::cout << std::hex << vec[i].first
+                  << " -> " << std::dec << vec[i].second << std::endl;
+    }
+
     *out << "===============================================" << std::endl;
 }
 
@@ -230,10 +282,12 @@ int main(int argc, char *argv[])
 
     std::string fileName = KnobOutputFile.Value();
 
-    if (!fileName.empty())
+    if (fileName.empty())
     {
-        out = new std::ofstream(fileName.c_str());
+        fileName = "mem.trace";
     }
+
+    out = new std::ofstream(fileName.c_str());
 
     // Register instruction-level instrumentation (memory tracing)
     INS_AddInstrumentFunction(Instruction, 0);
